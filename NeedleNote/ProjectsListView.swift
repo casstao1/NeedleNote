@@ -2,7 +2,9 @@ import SwiftUI
 
 struct ProjectsListView: View {
     @EnvironmentObject var store: ProjectStore
+    @EnvironmentObject var purchases: PurchaseManager
     @State private var showingNewProject = false
+    @State private var showingPaywall = false
     @State private var activeProjectID: KnitProject.ID?
     
     var body: some View {
@@ -20,7 +22,7 @@ struct ProjectsListView: View {
                             Spacer()
 
                             Button {
-                                showingNewProject = true
+                                handleCreateProjectTap()
                             } label: {
                                 Image(systemName: "plus")
                                     .font(.system(size: 20, weight: .bold))
@@ -33,17 +35,22 @@ struct ProjectsListView: View {
                         }
                         .padding(.top, 8)
 
-                        LazyVStack(spacing: 12) {
-                            ForEach(store.projects) { project in
-                                SwipeableProjectCard(
-                                    project: project,
-                                    onOpen: {
-                                        activeProjectID = project.id
-                                    },
-                                    onDelete: {
-                                        deleteProject(project.id)
-                                    }
-                                )
+                        if store.projects.isEmpty {
+                            EmptyProjectsState()
+                                .padding(.top, 48)
+                        } else {
+                            LazyVStack(spacing: 12) {
+                                ForEach(store.projects) { project in
+                                    SwipeableProjectCard(
+                                        project: project,
+                                        onOpen: {
+                                            activeProjectID = project.id
+                                        },
+                                        onDelete: {
+                                            deleteProject(project.id)
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -69,8 +76,28 @@ struct ProjectsListView: View {
         .sheet(isPresented: $showingNewProject) {
             NewProjectView { createdProject in
                 showingNewProject = false
-                activeProjectID = createdProject.id
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                    activeProjectID = createdProject.id
+                }
             }
+        }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView {
+                Task { @MainActor in
+                    showingPaywall = false
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                    showingNewProject = true
+                }
+            }
+        }
+    }
+
+    func handleCreateProjectTap() {
+        if purchases.canCreateProject(existingProjectCount: store.projects.count) {
+            showingNewProject = true
+        } else {
+            showingPaywall = true
         }
     }
 
@@ -80,6 +107,38 @@ struct ProjectsListView: View {
             activeProjectID = nil
         }
         store.save()
+    }
+}
+
+struct EmptyProjectsState: View {
+    var body: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(KnitTheme.roseLight)
+                    .frame(width: 72, height: 72)
+
+                Image(systemName: "plus")
+                    .font(.system(size: 30, weight: .semibold))
+                    .foregroundColor(KnitTheme.rose)
+            }
+
+            VStack(spacing: 6) {
+                Text("Start your first project")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(KnitTheme.brown)
+
+                Text("Tap the plus button above to create your free first project.")
+                    .font(.system(size: 15))
+                    .foregroundColor(KnitTheme.taupe)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 36)
+        .cardStyle()
     }
 }
 

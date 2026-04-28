@@ -1,0 +1,36 @@
+{
+  "identifier" : "D38FD25C-1A64-4AE7-A2E5-BDE1C76E3BC5",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "EED04D11-5396-44B1-BA4F-03D58AE3D96A",
+      "localizations" : [
+        {
+          "description" : "A one-time unlock for unlimited knitting projects.",
+          "displayName" : "Unlimited Projects",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.needlenote.app.unlimitedprojects",
+      "referenceName" : "Unlimited Projects",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA"
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "type" : "local",
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

@@ -135,7 +135,9 @@ class ProjectStore: ObservableObject {
     
     init() {
         load()
+        #if DEBUG
         seedBundledSamplePDFIfNeeded()
+        #endif
     }
     
     func save() {
@@ -154,6 +156,7 @@ class ProjectStore: ObservableObject {
             UserDefaults.standard.set(data, forKey: saveKey)
             UserDefaults.standard.removeObject(forKey: legacySaveKey)
         } else {
+            #if DEBUG
             // Sample data
             projects = [
                 KnitProject(
@@ -185,6 +188,9 @@ class ProjectStore: ObservableObject {
                     rowSections: []
                 )
             ]
+            #else
+            projects = []
+            #endif
         }
     }
 

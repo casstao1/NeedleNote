@@ -6,4 +6,5 @@ xcuserdata/
 
 # Build products
 DerivedData/
+DerivedData*/
 build/

@@ -17,9 +17,10 @@ struct ProjectDetailView: View {
         case notes = "Notes"
     }
 
-    init(project: KnitProject) {
+    init(project: KnitProject, initialTab: DetailTab = .rows) {
         self.project = project
         self._currentProject = State(initialValue: project)
+        self._selectedTab = State(initialValue: initialTab)
     }
 
     var body: some View {
