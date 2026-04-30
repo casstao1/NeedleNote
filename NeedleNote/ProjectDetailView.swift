@@ -10,6 +10,8 @@ struct ProjectDetailView: View {
     @State private var editingSection: RowSection? = nil
     @State private var showingPDFPicker = false
     @State private var activePDFID: ImportedPDF.ID? = nil
+    @State private var pendingImportedPDFID: ImportedPDF.ID?
+    @State private var pendingNotesSaveTask: Task<Void, Never>?
 
     enum DetailTab: String, CaseIterable {
         case rows = "Rows"
@@ -74,7 +76,8 @@ struct ProjectDetailView: View {
             }
         }
         .sheet(isPresented: $showingPDFPicker) {
-            PDFImportView(project: $currentProject) {
+            PDFImportView(project: $currentProject) { importedPDFID in
+                pendingImportedPDFID = importedPDFID
                 persistProjectChanges()
             }
         }
@@ -83,6 +86,15 @@ struct ProjectDetailView: View {
         }
         .onAppear {
             KnitHaptics.prepareCounterTap()
+        }
+        .onDisappear {
+            pendingNotesSaveTask?.cancel()
+            persistProjectChanges()
+        }
+        .onChange(of: showingPDFPicker) { _, isPresented in
+            guard !isPresented, let importedPDFID = pendingImportedPDFID else { return }
+            pendingImportedPDFID = nil
+            activePDFID = importedPDFID
         }
     }
 
@@ -254,7 +266,7 @@ struct ProjectDetailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .scrollContentBackground(.hidden)
                 .onChange(of: currentProject.notes) {
-                    persistProjectChanges()
+                    scheduleNotesSave()
                 }
         }
     }
@@ -290,8 +302,19 @@ struct ProjectDetailView: View {
     }
 
     func persistProjectChanges() {
+        pendingNotesSaveTask?.cancel()
+        pendingNotesSaveTask = nil
         currentProject.lastWorked = Date()
         store.updateProject(currentProject)
+    }
+
+    func scheduleNotesSave() {
+        pendingNotesSaveTask?.cancel()
+        pendingNotesSaveTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            guard !Task.isCancelled else { return }
+            persistProjectChanges()
+        }
     }
 
     func deleteSection(_ section: RowSection) {
@@ -510,7 +533,7 @@ struct ProjectPDFRow: View {
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(KnitTheme.brown)
                         .lineLimit(1)
-                    Text("Row \(pdf.rowCounter) · Page \(pdf.currentPage + 1)")
+                    Text("Page \(pdf.currentPage + 1)")
                         .font(.system(size: 12))
                         .foregroundColor(KnitTheme.taupe)
                 }

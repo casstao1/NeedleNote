@@ -36,7 +36,7 @@ struct ProjectsListView: View {
                         .padding(.top, 8)
 
                         if store.projects.isEmpty {
-                            EmptyProjectsState()
+                            EmptyProjectsState(onCreateProject: handleCreateProjectTap)
                                 .padding(.top, 48)
                         } else {
                             LazyVStack(spacing: 12) {
@@ -111,33 +111,40 @@ struct ProjectsListView: View {
 }
 
 struct EmptyProjectsState: View {
+    let onCreateProject: () -> Void
+
     var body: some View {
-        VStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(KnitTheme.roseLight)
-                    .frame(width: 72, height: 72)
+        Button(action: onCreateProject) {
+            VStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(KnitTheme.roseLight)
+                        .frame(width: 72, height: 72)
 
-                Image(systemName: "plus")
-                    .font(.system(size: 30, weight: .semibold))
-                    .foregroundColor(KnitTheme.rose)
+                    Image(systemName: "plus")
+                        .font(.system(size: 30, weight: .semibold))
+                        .foregroundColor(KnitTheme.rose)
+                }
+
+                VStack(spacing: 6) {
+                    Text("Let's create our first project")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundColor(KnitTheme.brown)
+                        .multilineTextAlignment(.center)
+
+                    Text("Tap to create your free first project.")
+                        .font(.system(size: 15))
+                        .foregroundColor(KnitTheme.taupe)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(3)
+                }
             }
-
-            VStack(spacing: 6) {
-                Text("Start your first project")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(KnitTheme.brown)
-
-                Text("Tap the plus button above to create your free first project.")
-                    .font(.system(size: 15))
-                    .foregroundColor(KnitTheme.taupe)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 36)
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 24)
-        .padding(.vertical, 36)
+        .buttonStyle(.plain)
         .cardStyle()
     }
 }

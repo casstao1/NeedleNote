@@ -7,10 +7,9 @@ import UniformTypeIdentifiers
 struct PDFImportView: View {
     @Binding var project: KnitProject
     @Environment(\.dismiss) var dismiss
-    let onSave: () -> Void
+    let onSave: (ImportedPDF.ID) -> Void
     
     @State private var showingFilePicker = false
-    @State private var importedPDF: ImportedPDF? = nil
     
     var body: some View {
         NavigationStack {
@@ -43,24 +42,6 @@ struct PDFImportView: View {
                         )
                     }
                     
-                    if let pdf = importedPDF {
-                        HStack(spacing: 12) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(KnitTheme.sage)
-                            VStack(alignment: .leading) {
-                                Text(pdf.name)
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(KnitTheme.brown)
-                                Text("\(ByteCountFormatter.string(fromByteCount: Int64(pdf.pdfData.count), countStyle: .file))")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(KnitTheme.taupe)
-                            }
-                            Spacer()
-                        }
-                        .padding(14)
-                        .cardStyle()
-                    }
-                    
                     // Tips
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Tips")
@@ -84,16 +65,10 @@ struct PDFImportView: View {
                     
                     Spacer()
                     
-                    if importedPDF != nil {
-                        Button("Add to Project") {
-                            if let pdf = importedPDF {
-                                project.importedPDFs.append(pdf)
-                                onSave()
-                            }
-                            dismiss()
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
+                    Button("Choose PDF") {
+                        showingFilePicker = true
                     }
+                    .buttonStyle(PrimaryButtonStyle())
                 }
                 .padding(16)
                 .padding(.bottom, 32)
@@ -109,7 +84,15 @@ struct PDFImportView: View {
         }
         .sheet(isPresented: $showingFilePicker) {
             PDFDocumentPicker { data, name in
-                importedPDF = ImportedPDF(name: name, pdfData: data)
+                let pdf = ImportedPDF(name: name, pdfData: data)
+                project.importedPDFs.append(pdf)
+                onSave(pdf.id)
+                showingFilePicker = false
+
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 150_000_000)
+                    dismiss()
+                }
             }
         }
     }

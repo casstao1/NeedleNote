@@ -1,5 +1,6 @@
 import PhotosUI
 import SwiftUI
+import UIKit
 
 struct NewProjectView: View {
     @EnvironmentObject var store: ProjectStore
@@ -11,6 +12,10 @@ struct NewProjectView: View {
     @State private var notes = ""
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var selectedPhotoData: Data?
+    @State private var showingPhotoOptions = false
+    @State private var showingPhotoLibrary = false
+    @State private var showingCamera = false
+    @State private var showingCameraUnavailableAlert = false
     
     var canCreate: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty }
     
@@ -21,7 +26,9 @@ struct NewProjectView: View {
                 
                 ScrollView {
                     VStack(spacing: 20) {
-                        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                        Button {
+                            showingPhotoOptions = true
+                        } label: {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                                     .fill(KnitTheme.roseLight.opacity(0.5))
@@ -87,15 +94,46 @@ struct NewProjectView: View {
             }
             .onChange(of: selectedPhotoItem) { _, newItem in
                 guard let newItem else {
-                    selectedPhotoData = nil
                     return
                 }
                 Task {
                     let loadedData = try? await newItem.loadTransferable(type: Data.self)
                     await MainActor.run {
-                        selectedPhotoData = loadedData
+                        selectedPhotoData = normalizedPhotoData(from: loadedData)
                     }
                 }
+            }
+            .confirmationDialog("Add Photo", isPresented: $showingPhotoOptions, titleVisibility: .visible) {
+                Button("Take Photo") {
+                    if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                        showingCamera = true
+                    } else {
+                        showingCameraUnavailableAlert = true
+                    }
+                }
+
+                Button("Choose from Library") {
+                    showingPhotoLibrary = true
+                }
+
+                if selectedPhotoData != nil {
+                    Button("Remove Photo", role: .destructive) {
+                        selectedPhotoData = nil
+                        selectedPhotoItem = nil
+                    }
+                }
+
+                Button("Cancel", role: .cancel) {}
+            }
+            .photosPicker(isPresented: $showingPhotoLibrary, selection: $selectedPhotoItem, matching: .images)
+            .fullScreenCover(isPresented: $showingCamera) {
+                CameraImagePicker(selectedPhotoData: $selectedPhotoData)
+                    .ignoresSafeArea()
+            }
+            .alert("Camera Unavailable", isPresented: $showingCameraUnavailableAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Use a real device to take a new photo, or choose one from your photo library.")
             }
         }
     }
@@ -117,6 +155,57 @@ struct NewProjectView: View {
         .padding(.vertical, 7)
         .background(KnitTheme.brown.opacity(0.7))
         .clipShape(Capsule())
+    }
+
+    private func normalizedPhotoData(from data: Data?) -> Data? {
+        guard let data,
+              let image = UIImage(data: data) else {
+            return data
+        }
+
+        return image.jpegData(compressionQuality: 0.82) ?? data
+    }
+}
+
+struct CameraImagePicker: UIViewControllerRepresentable {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var selectedPhotoData: Data?
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.allowsEditing = true
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(selectedPhotoData: $selectedPhotoData, dismiss: dismiss)
+    }
+
+    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        @Binding private var selectedPhotoData: Data?
+        private let dismiss: DismissAction
+
+        init(selectedPhotoData: Binding<Data?>, dismiss: DismissAction) {
+            self._selectedPhotoData = selectedPhotoData
+            self.dismiss = dismiss
+        }
+
+        func imagePickerController(
+            _ picker: UIImagePickerController,
+            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+        ) {
+            let image = (info[.editedImage] as? UIImage) ?? (info[.originalImage] as? UIImage)
+            selectedPhotoData = image?.jpegData(compressionQuality: 0.82)
+            dismiss()
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            dismiss()
+        }
     }
 }
 

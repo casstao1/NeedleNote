@@ -11,10 +11,7 @@ struct PDFViewerView: View {
     @State private var currentPage: Int
     @State private var totalPages = 0
     @State private var selectedTool: AnnotationTool = .none
-    @State private var rowCounter: Int
     @State private var showingRowCounter = true
-    @State private var rowRangeStart: Int
-    @State private var rowRangeEnd: Int
     @State private var highlightColorIndex = 1
     @State private var penColorIndex = 0
     @State private var annotationCommand: AnnotationCommand?
@@ -82,9 +79,6 @@ struct PDFViewerView: View {
 
         let value = pdf.wrappedValue
         self._currentPage = State(initialValue: value.currentPage)
-        self._rowCounter = State(initialValue: value.rowCounter)
-        self._rowRangeStart = State(initialValue: value.rowRangeStart)
-        self._rowRangeEnd = State(initialValue: max(value.rowRangeEnd, value.rowRangeStart))
     }
 
     var body: some View {
@@ -93,17 +87,26 @@ struct PDFViewerView: View {
 
             VStack(spacing: 0) {
                 topToolbar
-                PDFKitView(
-                    pdfData: $pdf.pdfData,
-                    highlights: $pdf.highlights,
-                    currentPage: $currentPage,
-                    totalPages: $totalPages,
-                    selectedTool: selectedTool,
-                    annotationColor: activeAnnotationColor,
-                    annotationCommand: annotationCommand,
-                    onDocumentChange: onSave
-                )
+                ZStack(alignment: .top) {
+                    PDFKitView(
+                        pdfData: $pdf.pdfData,
+                        highlights: $pdf.highlights,
+                        currentPage: $currentPage,
+                        totalPages: $totalPages,
+                        selectedTool: selectedTool,
+                        annotationColor: activeAnnotationColor,
+                        annotationCommand: annotationCommand,
+                        onDocumentChange: onSave
+                    )
                     .background(KnitTheme.cream)
+
+                    if selectedTool != .none {
+                        annotationLockBanner
+                            .padding(.top, 12)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                            .allowsHitTesting(false)
+                    }
+                }
                 bottomBar
             }
 
@@ -117,22 +120,6 @@ struct PDFViewerView: View {
         }
         .ignoresSafeArea(edges: .bottom)
         .onChange(of: currentPage) { persistPDFState() }
-        .onChange(of: rowCounter) { persistPDFState() }
-        .onChange(of: rowRangeStart) {
-            if rowRangeEnd < rowRangeStart {
-                rowRangeEnd = rowRangeStart
-            }
-            if rowCounter < rowRangeStart {
-                rowCounter = rowRangeStart
-            }
-            persistPDFState()
-        }
-        .onChange(of: rowRangeEnd) {
-            if rowCounter > rowRangeEnd {
-                rowCounter = rowRangeEnd
-            }
-            persistPDFState()
-        }
         .onDisappear {
             persistPDFState()
         }
@@ -301,6 +288,34 @@ struct PDFViewerView: View {
         .padding(.bottom, 18)
     }
 
+    var annotationLockBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 12, weight: .bold))
+            Text(annotationLockTitle)
+                .font(.system(size: 12, weight: .semibold))
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(KnitTheme.brown.opacity(0.86))
+        )
+        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+    }
+
+    var annotationLockTitle: String {
+        switch selectedTool {
+        case .highlight:
+            return "Locked for highlighting"
+        case .pen:
+            return "Locked for drawing"
+        case .none:
+            return "Unlocked for zooming"
+        }
+    }
+
     func floatingCounter(in size: CGSize) -> some View {
         let basePosition = resolvedCounterPosition(in: size)
         let dockedY = size.height - counterWidgetSize.height / 2 - 48
@@ -318,13 +333,8 @@ struct PDFViewerView: View {
             }
     }
 
-    @ViewBuilder
     var counterWidget: some View {
-        if rowSections.isEmpty {
-            singleCounterWidget
-        } else {
-            rowSectionsCounterWidget
-        }
+        rowSectionsCounterWidget
     }
 
     var rowSectionsCounterWidget: some View {
@@ -372,19 +382,23 @@ struct PDFViewerView: View {
 
             ScrollView {
                 VStack(spacing: useLargeCounterWidget ? 12 : 8) {
-                    ForEach(rowSections) { section in
-                        if useLargeCounterWidget {
-                            PDFRowSectionCounterCard(
-                                section: section,
-                                onDecrement: { updateSectionCounter(sectionID: section.id, delta: -1) },
-                                onIncrement: { updateSectionCounter(sectionID: section.id, delta: 1) }
-                            )
-                        } else {
-                            PDFCompactRowSectionCounterCard(
-                                section: section,
-                                onDecrement: { updateSectionCounter(sectionID: section.id, delta: -1) },
-                                onIncrement: { updateSectionCounter(sectionID: section.id, delta: 1) }
-                            )
+                    if rowSections.isEmpty {
+                        emptyCounterState
+                    } else {
+                        ForEach(rowSections) { section in
+                            if useLargeCounterWidget {
+                                PDFRowSectionCounterCard(
+                                    section: section,
+                                    onDecrement: { updateSectionCounter(sectionID: section.id, delta: -1) },
+                                    onIncrement: { updateSectionCounter(sectionID: section.id, delta: 1) }
+                                )
+                            } else {
+                                PDFCompactRowSectionCounterCard(
+                                    section: section,
+                                    onDecrement: { updateSectionCounter(sectionID: section.id, delta: -1) },
+                                    onIncrement: { updateSectionCounter(sectionID: section.id, delta: 1) }
+                                )
+                            }
                         }
                     }
                 }
@@ -398,119 +412,24 @@ struct PDFViewerView: View {
         .shadow(color: .black.opacity(0.15), radius: 14, y: 4)
     }
 
-    var singleCounterWidget: some View {
-        VStack(spacing: 18) {
-            HStack(spacing: 8) {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(KnitTheme.taupe.opacity(0.85))
-                Text("Row Counter")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(KnitTheme.brown)
-                Spacer()
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
-                        useLargeCounterWidget.toggle()
-                    }
-                } label: {
-                    Image(systemName: useLargeCounterWidget ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(KnitTheme.taupe)
-                }
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
-                        dockCounterToBottom.toggle()
-                    }
-                } label: {
-                    Image(systemName: dockCounterToBottom ? "rectangle.bottomthird.inset.filled" : "rectangle.bottomthird.inset")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(dockCounterToBottom ? KnitTheme.rose : KnitTheme.taupe)
-                }
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
-                        showingRowCounter = false
-                    }
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(KnitTheme.rose)
-                }
-            }
-            .contentShape(Rectangle())
-            .gesture(counterDragGesture)
-
-            Text("\(rowCounter)")
-                .font(.system(size: 68, weight: .bold, design: .rounded))
+    var emptyCounterState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "list.number")
+                .font(.system(size: useLargeCounterWidget ? 24 : 18, weight: .semibold))
+                .foregroundColor(KnitTheme.rose)
+                .frame(width: useLargeCounterWidget ? 48 : 34, height: useLargeCounterWidget ? 48 : 34)
+                .background(KnitTheme.roseLight.opacity(0.65))
+                .clipShape(Circle())
+            Text("No row sections yet")
+                .font(.system(size: useLargeCounterWidget ? 15 : 12, weight: .semibold))
                 .foregroundColor(KnitTheme.brown)
-                .contentTransition(.numericText())
-                .animation(.spring(response: 0.25), value: rowCounter)
-
-            HStack(spacing: 48) {
-                Button {
-                    if rowCounter > rowRangeStart {
-                        rowCounter -= 1
-                    }
-                    KnitHaptics.counterTap()
-                } label: {
-                    Image(systemName: "minus")
-                        .font(.system(size: 24, weight: .medium))
-                        .foregroundColor(KnitTheme.brown)
-                        .frame(width: 64, height: 64)
-                        .background(KnitTheme.roseLight)
-                        .clipShape(Circle())
-                }
-
-                Button {
-                    if rowCounter < rowRangeEnd {
-                        rowCounter += 1
-                    }
-                    KnitHaptics.counterTap()
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 24, weight: .medium))
-                        .foregroundColor(.white)
-                        .frame(width: 64, height: 64)
-                        .background(KnitTheme.rose)
-                        .clipShape(Circle())
-                }
-            }
-
-            VStack(spacing: 10) {
-                Text("Set Row Range")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(KnitTheme.taupe)
-
-                HStack(spacing: 24) {
-                    compactRangeEditor(title: "From", value: rowRangeStart) {
-                        if rowRangeStart > 1 {
-                            rowRangeStart -= 1
-                        }
-                    } onIncrease: {
-                        rowRangeStart += 1
-                    }
-
-                    compactRangeEditor(title: "To", value: rowRangeEnd) {
-                        if rowRangeEnd > rowRangeStart {
-                            rowRangeEnd -= 1
-                        }
-                    } onIncrease: {
-                        rowRangeEnd += 1
-                    }
-                }
-            }
-
-            Button("Reset Counter") {
-                withAnimation {
-                    rowCounter = rowRangeStart
-                }
-            }
-            .font(.system(size: 13, weight: .medium))
-            .foregroundColor(KnitTheme.taupe.opacity(0.82))
+            Text("Add rows in the Rows tab.")
+                .font(.system(size: useLargeCounterWidget ? 13 : 10))
+                .foregroundColor(KnitTheme.taupe)
+                .multilineTextAlignment(.center)
         }
-        .padding(20)
-        .background(KnitTheme.warmWhite)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .shadow(color: .black.opacity(0.15), radius: 14, y: 4)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, useLargeCounterWidget ? 34 : 16)
     }
 
     var counterDragGesture: some Gesture {
@@ -563,9 +482,6 @@ struct PDFViewerView: View {
     }
 
     var counterWidgetSize: CGSize {
-        if rowSections.isEmpty {
-            return useLargeCounterWidget ? CGSize(width: 300, height: 360) : CGSize(width: 250, height: 320)
-        }
         return useLargeCounterWidget ? CGSize(width: 390, height: 560) : CGSize(width: 272, height: 188)
     }
 
@@ -669,27 +585,6 @@ struct PDFViewerView: View {
         .buttonStyle(.plain)
     }
 
-    func compactRangeEditor(
-        title: String,
-        value: Int,
-        onDecrease: @escaping () -> Void,
-        onIncrease: @escaping () -> Void
-    ) -> some View {
-        VStack(spacing: 6) {
-            Text(title)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(KnitTheme.taupe)
-            HStack(spacing: 8) {
-                CounterButton(systemName: "minus", action: onDecrease)
-                Text("\(value)")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(KnitTheme.brown)
-                    .frame(minWidth: 24)
-                CounterButton(systemName: "plus", action: onIncrease)
-            }
-        }
-    }
-
     func updateSectionCounter(sectionID: RowSection.ID, delta: Int) {
         guard let index = rowSections.firstIndex(where: { $0.id == sectionID }) else { return }
 
@@ -709,9 +604,6 @@ struct PDFViewerView: View {
 
     func persistPDFState() {
         pdf.currentPage = currentPage
-        pdf.rowCounter = rowCounter
-        pdf.rowRangeStart = rowRangeStart
-        pdf.rowRangeEnd = max(rowRangeEnd, rowRangeStart)
         onSave()
     }
 }
@@ -831,11 +723,14 @@ struct PDFKitView: UIViewRepresentable {
             let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
             panGesture.delegate = self
             panGesture.maximumNumberOfTouches = 1
+            panGesture.isEnabled = false
             pdfView.addGestureRecognizer(panGesture)
             self.panGesture = panGesture
         }
 
         func updateInteractionMode(selectedTool: PDFViewerView.AnnotationTool, annotationColor: CodableColor) {
+            let isAnnotating = selectedTool != .none
+
             if currentTool != selectedTool {
                 cancelActiveAnnotation()
             }
@@ -843,10 +738,23 @@ struct PDFKitView: UIViewRepresentable {
             currentTool = selectedTool
             currentAnnotationColor = annotationColor
 
-            findScrollView(in: pdfView)?.isScrollEnabled = selectedTool == .none
+            panGesture?.isEnabled = isAnnotating
+            setPDFNavigationEnabled(!isAnnotating)
 
-            if selectedTool == .none {
+            DispatchQueue.main.async { [weak self] in
+                self?.setPDFNavigationEnabled(!isAnnotating)
+            }
+
+            if !isAnnotating {
                 cancelActiveAnnotation()
+            }
+        }
+
+        func setPDFNavigationEnabled(_ isEnabled: Bool) {
+            for scrollView in findScrollViews(in: pdfView) {
+                scrollView.isScrollEnabled = isEnabled
+                scrollView.panGestureRecognizer.isEnabled = isEnabled
+                scrollView.pinchGestureRecognizer?.isEnabled = isEnabled
             }
         }
 
@@ -1056,19 +964,19 @@ struct PDFKitView: UIViewRepresentable {
             return CodableColor(red: red, green: green, blue: blue, alpha: alpha)
         }
 
-        func findScrollView(in view: UIView?) -> UIScrollView? {
-            guard let view else { return nil }
+        func findScrollViews(in view: UIView?) -> [UIScrollView] {
+            guard let view else { return [] }
+            var scrollViews: [UIScrollView] = []
+
             if let scrollView = view as? UIScrollView {
-                return scrollView
+                scrollViews.append(scrollView)
             }
 
             for subview in view.subviews {
-                if let scrollView = findScrollView(in: subview) {
-                    return scrollView
-                }
+                scrollViews.append(contentsOf: findScrollViews(in: subview))
             }
 
-            return nil
+            return scrollViews
         }
     }
 }
@@ -1157,10 +1065,12 @@ struct PDFCompactRowSectionCounterCard: View {
             RoundedRectangle(cornerRadius: 15, style: .continuous)
                 .fill(KnitTheme.warmWhite.opacity(0.96))
         )
+        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .stroke(KnitTheme.divider.opacity(0.8), lineWidth: 1)
+                .strokeBorder(KnitTheme.divider.opacity(0.8), lineWidth: 1)
         )
+        .compositingGroup()
     }
 
     func compactCounterButton(systemName: String, action: @escaping () -> Void) -> some View {
@@ -1175,4 +1085,3 @@ struct PDFCompactRowSectionCounterCard: View {
         .buttonStyle(.plain)
     }
 }
-
